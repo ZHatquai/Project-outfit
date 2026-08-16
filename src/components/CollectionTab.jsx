@@ -16,10 +16,12 @@ import {
 } from '../data/samples.js'
 import { downloadCsv } from '../export/csv.js'
 
+// Tone classes are unlayered CSS in index.css — layered utilities cannot
+// override .field-invisible, so the pill styling lives beside it instead.
 const STATUS_SELECT_TONE = {
-  Certified: 'bg-good-bg text-good-text',
-  Pending: 'bg-warn-bg text-warn-text',
-  Missing: 'bg-bad-bg text-bad-text',
+  Certified: 'tone-good',
+  Pending: 'tone-warn',
+  Missing: 'tone-bad',
 }
 
 function RemoveButton({ onClick, label }) {
@@ -68,8 +70,11 @@ export default function CollectionTab({ form }) {
   const [toast, setToast] = useState(null)
 
   const notify = (filename, kind) => {
-    setToast({ filename, kind, id: Date.now() })
-    window.setTimeout(() => setToast(null), 4200)
+    const id = Date.now()
+    setToast({ filename, kind, id })
+    // Only clear the toast this timer was armed for — a stale timer from an
+    // earlier export must not dismiss a newer toast early.
+    window.setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 4200)
   }
 
   const exportData = { context, materials, waste, timberConfirmed }
@@ -206,7 +211,7 @@ export default function CollectionTab({ form }) {
                         onChange={(e) => updateMaterial(row.id, { quantity: e.target.value })}
                       />
                       <select
-                        className="field-invisible w-18 text-ink-secondary"
+                        className="field-invisible w-18"
                         aria-label={`Material ${index + 1} unit`}
                         value={row.unit}
                         onChange={(e) => updateMaterial(row.id, { unit: e.target.value })}
@@ -242,7 +247,7 @@ export default function CollectionTab({ form }) {
                   </td>
                   <td className="px-1 py-1.5">
                     <select
-                      className={`field-invisible min-w-32 rounded-full text-xs font-semibold ${STATUS_SELECT_TONE[row.status] ?? ''}`}
+                      className={`field-invisible min-w-32 font-semibold ${STATUS_SELECT_TONE[row.status] ?? ''}`}
                       aria-label={`Material ${index + 1} status`}
                       value={row.status}
                       onChange={(e) => updateMaterial(row.id, { status: e.target.value })}
@@ -368,7 +373,7 @@ export default function CollectionTab({ form }) {
               type="checkbox"
               checked={timberConfirmed}
               onChange={(e) => setTimberConfirmed(e.target.checked)}
-              className="peer size-5 appearance-none rounded-md border-2 border-ink-muted/50 bg-white transition-all duration-150 group-hover:border-navy checked:border-lime checked:bg-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
+              className="peer size-5 appearance-none rounded-md border-2 border-ink-muted bg-white transition-all duration-150 group-hover:border-navy checked:border-lime checked:bg-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
             />
             <CheckIcon className="pointer-events-none absolute inset-0 m-auto size-3.5 text-navy opacity-0 transition-opacity duration-150 peer-checked:opacity-100" />
           </span>

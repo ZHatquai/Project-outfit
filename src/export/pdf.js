@@ -27,8 +27,29 @@ const slugify = (text) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'project'
 
+// jsPDF's built-in Helvetica is single-byte WinAnsi — one character outside
+// cp1252 makes jsPDF re-encode the WHOLE string as UTF-16 pairs and the entire
+// field renders as garbage. Fold what we can, replace the rest with '?'.
+const CP1252_EXTRA = new Set('ŒœŠšŸŽžƒˆ˜–—‘’‚“”„†‡•…‰‹›€™')
+const CHAR_MAP = {
+  'Ł': 'L', 'ł': 'l', 'Đ': 'D', 'đ': 'd', 'Ø': 'O', 'ø': 'o',
+  '≥': '>=', '≤': '<=', '→': '->', '←': '<-', '≈': '~', ' ': ' ',
+}
+const toWinAnsi = (value) =>
+  Array.from(String(value ?? ''))
+    .map((ch) => {
+      if (ch.codePointAt(0) <= 0xff || CP1252_EXTRA.has(ch)) return ch
+      if (CHAR_MAP[ch]) return CHAR_MAP[ch]
+      const folded = ch.normalize('NFKD').replace(/[̀-ͯ]/g, '')
+      if (folded && Array.from(folded).every((c) => c.codePointAt(0) <= 0xff)) {
+        return folded
+      }
+      return '?'
+    })
+    .join('')
+
 const orDash = (value) => {
-  const text = String(value ?? '').trim()
+  const text = toWinAnsi(value).trim()
   return text === '' ? '—' : text
 }
 
@@ -109,8 +130,6 @@ export function downloadPdf({ context, materials, waste, timberConfirmed }) {
 
   // ---- Project context block ----
   let y = HEADER_HEIGHT + 14
-  doc.setFillColor(...PAPER)
-  doc.roundedRect(MARGIN, y - 6, pageWidth - MARGIN * 2, 21, 2, 2, 'F')
 
   const contextEntries = [
     ['Project name', orDash(context.projectName)],
@@ -118,7 +137,23 @@ export function downloadPdf({ context, materials, waste, timberConfirmed }) {
     ['Subcontractor', orDash(context.subcontractor)],
   ]
   const colWidth = (pageWidth - MARGIN * 2 - 12) / 3
-  contextEntries.forEach(([label, value], i) => {
+
+  // Wrap each value to up to two lines (the exported file IS the record — a
+  // long project name must not be silently cut), sizing the box to fit.
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.5)
+  const wrappedValues = contextEntries.map(([, value]) => {
+    const lines = doc.splitTextToSize(value, colWidth - 4)
+    if (lines.length <= 2) return lines
+    return [lines[0], `${lines[1].slice(0, Math.max(0, lines[1].length - 2))}…`]
+  })
+  const maxLines = Math.max(1, ...wrappedValues.map((lines) => lines.length))
+  const boxHeight = 21 + (maxLines - 1) * 5
+
+  doc.setFillColor(...PAPER)
+  doc.roundedRect(MARGIN, y - 6, pageWidth - MARGIN * 2, boxHeight, 2, 2, 'F')
+
+  contextEntries.forEach(([label], i) => {
     const x = MARGIN + 6 + colWidth * i
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
@@ -127,22 +162,20 @@ export function downloadPdf({ context, materials, waste, timberConfirmed }) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10.5)
     doc.setTextColor(...NAVY)
-    doc.text(
-      doc.splitTextToSize(value, colWidth - 4)[0] ?? '—',
-      x,
-      y + 6.5,
-    )
+    doc.text(wrappedValues[i], x, y + 6.5)
   })
 
   // ---- Materials table ----
-  y += 25
+  y += boxHeight + 4
   sectionTitle(doc, 'Materials', y)
 
   const materialRows = materials.map((m) => [
     orDash(m.location),
     orDash(m.product),
     orDash(m.manufacturer),
-    String(m.quantity ?? '').trim() === '' ? '—' : `${m.quantity} ${m.unit ?? ''}`.trim(),
+    String(m.quantity ?? '').trim() === ''
+      ? '—'
+      : toWinAnsi(`${m.quantity} ${m.unit ?? ''}`).trim(),
     String(m.recycled ?? '').trim() === '' ? '—' : `${m.recycled}%`,
     orDash(m.certification),
     orDash(m.status),

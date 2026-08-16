@@ -92,6 +92,18 @@ function useCollectionForm() {
 
 function TabToggle({ active, onChange }) {
   const activeIndex = TABS.findIndex((t) => t.id === active)
+  const tabRefs = useRef([])
+
+  // Complete ARIA tabs pattern: roving tabindex + arrow keys move selection.
+  const handleKeyDown = (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const direction = event.key === 'ArrowRight' ? 1 : -1
+    const next = (activeIndex + direction + TABS.length) % TABS.length
+    onChange(TABS[next].id)
+    tabRefs.current[next]?.focus()
+  }
+
   return (
     <div
       role="tablist"
@@ -103,13 +115,18 @@ function TabToggle({ active, onChange }) {
         className="absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-full bg-lime shadow-[0_2px_12px_rgb(214_222_35/0.4)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
         style={{ transform: `translateX(${activeIndex * 100}%)` }}
       />
-      {TABS.map((tab) => (
+      {TABS.map((tab, index) => (
         <button
           key={tab.id}
+          ref={(el) => (tabRefs.current[index] = el)}
+          id={`tab-${tab.id}`}
           role="tab"
           type="button"
           aria-selected={active === tab.id}
+          aria-controls={`panel-${tab.id}`}
+          tabIndex={active === tab.id ? 0 : -1}
           onClick={() => onChange(tab.id)}
+          onKeyDown={handleKeyDown}
           className={`relative z-10 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime ${
             active === tab.id ? 'text-navy' : 'text-white/70 hover:text-white'
           }`}
@@ -168,7 +185,13 @@ export default function App() {
 
       {/* Content */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {activeTab === 'collection' ? <CollectionTab form={form} /> : <DashboardTab />}
+        <div
+          role="tabpanel"
+          id={`panel-${activeTab}`}
+          aria-labelledby={`tab-${activeTab}`}
+        >
+          {activeTab === 'collection' ? <CollectionTab form={form} /> : <DashboardTab />}
+        </div>
       </main>
 
       {/* Footer */}
